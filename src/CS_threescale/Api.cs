@@ -5,6 +5,7 @@ using CS_threescale;
 using System.Net;
 using System.IO;
 using System.Collections;
+using System.Threading.Tasks;
 
 namespace CS_threescale
 {
@@ -41,31 +42,31 @@ namespace CS_threescale
             set { hostURI = value; }
         }
 
-        /// <summary>
-        /// Calls Authrep on the 3scale backend to authorize an application and report the associated transaction at the same time.
-        /// </summary>
-        /// <param name="parameters">A Hashtable of parameter name value pairs</param>
-        public AuthorizeResponse authrep(Hashtable parameters)
-        {
-            return CallAuthorize("/transactions/authrep.xml", parameters);
-        }
+        ///// <summary>
+        ///// Calls Authrep on the 3scale backend to authorize an application and report the associated transaction at the same time.
+        ///// </summary>
+        ///// <param name="parameters">A Hashtable of parameter name value pairs</param>
+        //public AuthorizeResponse authrep(Hashtable parameters)
+        //{
+        //    return CallAuthorize("/transactions/authrep.xml", parameters);
+        //}
 
-        /// <summary>
-        /// Calls Authorize on the 3scale backend to:
-        /// Check an application exists, is active and within limits. 
-        /// Can also be used to authenticate a call using the required authentication parameters
-        /// </summary>
-        /// <param name="parameters">A Hashtable of parameter name value pairs</param>
-        public AuthorizeResponse authorize(Hashtable parameters)
-        {
-            return CallAuthorize("/transactions/authorize.xml", parameters);
-        }
+        ///// <summary>
+        ///// Calls Authorize on the 3scale backend to:
+        ///// Check an application exists, is active and within limits. 
+        ///// Can also be used to authenticate a call using the required authentication parameters
+        ///// </summary>
+        ///// <param name="parameters">A Hashtable of parameter name value pairs</param>
+        //public AuthorizeResponse authorize(Hashtable parameters)
+        //{
+        //    return CallAuthorize("/transactions/authorize.xml", parameters);
+        //}
 
         /// <summary>
         /// Report the specified transactions to the 3scale backend.
         /// </summary>
         /// <param name="transactions">A Hashtable containing the transactions to be reported</param>
-        public void report(Hashtable transactions)
+        public async Task reportAsync(Hashtable transactions)
         {
             if ((transactions == null) || (transactions.Count <= 0))
                 throw new ApiException("argument error: undefined transactions, must be at least one");
@@ -80,18 +81,18 @@ namespace CS_threescale
 
             AddTransactions(ref content, transactions);
 
-            Console.WriteLine("content: " + content);
-            
             byte[] data = Encoding.UTF8.GetBytes(content);
             request.ContentLength = data.Length;
 
             try
             {
                 request.ContentLength = data.Length;
-                Stream str = request.GetRequestStream();
-                str.Write(data, 0, data.Length);
+                using (Stream str = await request.GetRequestStreamAsync())
+                {
+                    str.Write(data, 0, data.Length);
+                }
 
-                using (HttpWebResponse response = (HttpWebResponse)request.GetResponse())
+                using (HttpWebResponse response = (HttpWebResponse)await request.GetResponseAsync())
                 {
                     Stream s = response.GetResponseStream();
                     List<byte> st = new List<byte>();
@@ -166,9 +167,9 @@ namespace CS_threescale
         /// Calls Authorize on the 3scale backend with the specified parameters using the Oauth authentication pattern.
         /// </summary>
         /// <param name="parameters">A Hashtable of parameter name value pairs</param>
-        public AuthorizeResponse oauth_authorize(Hashtable parameters)
+        public async Task<AuthorizeResponse> oauth_authorizeAsync(Hashtable parameters)
         {
-            return CallAuthorize("/transactions/oauth_authorize.xml", parameters);
+            return await CallAuthorizeAsync("/transactions/oauth_authorize.xml", parameters);
         }
 
         /// <summary>
@@ -177,7 +178,7 @@ namespace CS_threescale
         /// <returns>An AuthorizeResponse object representing the authorize response</returns>
         /// <param name="endPoint">The endpoint to hit</param>
         /// <param name="parameters">A Hashtable of parameter name value pairs.</param>
-        private AuthorizeResponse CallAuthorize(string endPoint, Hashtable parameters)
+        private async Task<AuthorizeResponse> CallAuthorizeAsync(string endPoint, Hashtable parameters)
         {
             string URL = hostURI + endPoint;
 
@@ -199,7 +200,7 @@ namespace CS_threescale
 
             try
             {
-                using (var response = request.GetResponse())
+                using (var response = await request.GetResponseAsync())
                 {
                     Stream s = response.GetResponseStream();
                     List<byte> st = new List<byte>();
@@ -330,6 +331,21 @@ namespace CS_threescale
                     }
                 }
             }
+        }
+    }
+
+    public static class WebRequestExtensions
+    {
+        public static Task<Stream> GetRequestStreamAsync(this WebRequest request)
+        {
+            return Task.Factory.FromAsync<Stream>(
+                request.BeginGetRequestStream, request.EndGetRequestStream, null);
+        }
+
+        public static Task<WebResponse> GetResponseAsync(this WebRequest request)
+        {
+            return Task.Factory.FromAsync<WebResponse>(
+                request.BeginGetResponse, request.EndGetResponse, null);
         }
     }
 }
